@@ -1,0 +1,11 @@
+apiVersion: infra.akintoyeopeyemi.info/v1
+kind: S3Backup
+metadata:
+  labels:
+    app.kubernetes.io/name: backup-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: s3backup-sample
+spec:
+  schedule: "0 2 * * *"
+  databaseURL: "postgres://user:pass@mydb:5432/data"
+  s3Bucket: "my-production-backups"
