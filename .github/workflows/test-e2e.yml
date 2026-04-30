@@ -2,6 +2,12 @@ name: E2E Tests
 
 on:
   push:
+    paths: 
+      - "api/**"
+      - "config/**"
+      - "samples/**"
+      - "internal/**"
+      - "test/**"
   pull_request:
 
 jobs:
