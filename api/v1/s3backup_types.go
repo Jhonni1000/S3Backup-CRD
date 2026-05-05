@@ -42,6 +42,9 @@ type S3BackupSpec struct {
 
 	// s3Bucket is the destination bucket for the backup
 	S3Bucket string `json:"s3Bucket"`
+
+	// Kubernetes Secret with the required AWS credentials
+	AWSCredentialsSecretName string `json:"AWSCredentialsSecretName"`
 }
 
 // S3BackupStatus defines the observed state of S3Backup.
