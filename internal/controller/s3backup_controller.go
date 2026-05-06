@@ -19,6 +19,10 @@ package controller
 import (
 	"context"
 
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -51,7 +55,8 @@ func (r *S3BackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	var backup infrav1.S3Backup
 
-	if err := r.Get(ctx, req.NamespacedName, &backup); err != nil {
+	err := r.Get(ctx, req.NamespacedName, &backup)
+	if err != nil {
 		// client.IgnoreNotFound ignores errors caused by the resource being deleted.
 		// If it's deleted, we don't need to do anything.
 
@@ -68,6 +73,44 @@ func (r *S3BackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		"Name", backup.Name,
 		"RequestedSchedule", backup.Spec.Schedule)
 
+	desiredCronJob, err := r.CronJobForBackup(&backup)
+	if err != nil {
+		logger.Error(err, "Failed to define new CronJob resource for S3Backup")
+		return ctrl.Result{}, err
+	}
+
+	found := batchv1.CronJob{}
+	err = r.Get(ctx, req.NamespacedName, &found)
+
+	if apierrors.IsNotFound(err) {
+		err = r.Create(ctx, desiredCronJob)
+		if err != nil {
+			logger.Error(err, "Could not create CronJob")
+			return ctrl.Result{}, err
+		}
+
+		logger.Info("Successfully created new CronJob!",
+			"Name", desiredCronJob.Name,
+			"RequestedSchedule", desiredCronJob.Spec.Schedule)
+
+	} else if err != nil {
+		logger.Error(err, "Could not create CronJob")
+		return ctrl.Result{}, err
+	} else {
+		if found.Spec.Schedule != desiredCronJob.Spec.Schedule {
+
+			desiredCronJob.ResourceVersion = found.ResourceVersion
+
+			err = r.Update(ctx, desiredCronJob)
+			if err != nil {
+				logger.Error(err, "Unable to make update to CronJob")
+				return ctrl.Result{}, err
+			}
+
+			logger.Info("Successfully Updated CronJob")
+		}
+	}
+
 	return ctrl.Result{}, nil
 }
 
@@ -77,4 +120,60 @@ func (r *S3BackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&infrav1.S3Backup{}).
 		Named("s3backup").
 		Complete(r)
+}
+
+func (r *S3BackupReconciler) CronJobForBackup(backup *infrav1.S3Backup) (*batchv1.CronJob, error) {
+
+	cronjob := &batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      backup.Name,
+			Namespace: backup.Namespace,
+		},
+		Spec: batchv1.CronJobSpec{
+			Schedule: backup.Spec.Schedule,
+			JobTemplate: batchv1.JobTemplateSpec{
+				Spec: batchv1.JobSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							RestartPolicy: corev1.RestartPolicyNever,
+							Containers: []corev1.Container{
+								{
+									Name:  "backup-runner",
+									Image: "postgres:15",
+									Env: []corev1.EnvVar{
+										{
+											Name:  "DATABASE_URL",
+											Value: backup.Spec.DatabaseURL,
+										},
+										{
+											Name:  "S3_BUCKET",
+											Value: backup.Spec.S3Bucket,
+										},
+										{
+											Name: "AWS_ACCESS_KEY_ID",
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: backup.Spec.AWSCredentialsSecretName,
+													},
+													Key: "AWS_ACCESS_KEY_ID",
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	err := ctrl.SetControllerReference(backup, cronjob, r.Scheme)
+	if err != nil {
+		return nil, err
+	}
+
+	return cronjob, err
 }
