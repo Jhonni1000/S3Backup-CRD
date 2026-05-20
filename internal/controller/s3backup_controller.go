@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -97,6 +98,13 @@ func (r *S3BackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		logger.Error(err, "Could not create CronJob")
 		return ctrl.Result{}, err
 	} else {
+
+		if !metav1.IsControlledBy(&found, &backup) {
+			err := fmt.Errorf("Cronjob %s already exists and is not managed by S3Backup", found.Name)
+			logger.Error(err, "Resource Naming Collision")
+			return ctrl.Result{}, err
+		}
+
 		if found.Spec.Schedule != desiredCronJob.Spec.Schedule {
 
 			desiredCronJob.ResourceVersion = found.ResourceVersion
@@ -111,6 +119,13 @@ func (r *S3BackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		}
 	}
 
+	backup.Status.Schedule = desiredCronJob.Spec.Schedule
+	err = r.Status().Update(ctx, &backup)
+	if err != nil {
+		logger.Error(err, "Unable to Update Resource Status")
+		return ctrl.Result{}, err
+	}
+
 	return ctrl.Result{}, nil
 }
 
@@ -118,6 +133,7 @@ func (r *S3BackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 func (r *S3BackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&infrav1.S3Backup{}).
+		Owns(&batchv1.CronJob{}).
 		Named("s3backup").
 		Complete(r)
 }
