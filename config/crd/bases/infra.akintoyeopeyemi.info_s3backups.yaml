@@ -39,6 +39,9 @@ spec:
           spec:
             description: spec defines the desired state of S3Backup
             properties:
+              AWSCredentialsSecretName:
+                description: Kubernetes Secret with the required AWS credentials
+                type: string
               databaseURL:
                 description: DatabaseURL is the connection string to the database
                 type: string
@@ -54,6 +57,7 @@ spec:
                   run
                 type: string
             required:
+            - AWSCredentialsSecretName
             - databaseURL
             - s3Bucket
             - schedule
@@ -130,7 +134,7 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              lastBackupTime:
+              schedule:
                 type: string
             type: object
         required:

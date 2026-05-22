@@ -100,7 +100,7 @@ func (r *S3BackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	} else {
 
 		if !metav1.IsControlledBy(&found, &backup) {
-			err := fmt.Errorf("Cronjob %s already exists and is not managed by S3Backup", found.Name)
+			err := fmt.Errorf("cronjob %s already exists and is not managed by S3Backup", found.Name)
 			logger.Error(err, "Resource Naming Collision")
 			return ctrl.Result{}, err
 		}
