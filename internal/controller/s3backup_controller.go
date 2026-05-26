@@ -177,6 +177,8 @@ func (r *S3BackupReconciler) CronJobForBackup(backup *infrav1.S3Backup) (*batchv
 											},
 										},
 									},
+									Command: []string{"/bin/sh", "-c"},
+									Args:    []string{},
 								},
 							},
 						},
