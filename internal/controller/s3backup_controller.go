@@ -155,7 +155,7 @@ func (r *S3BackupReconciler) CronJobForBackup(backup *infrav1.S3Backup) (*batchv
 							Containers: []corev1.Container{
 								{
 									Name:  "backup-runner",
-									Image: "postgres:15",
+									Image: "jhonni1000/s3-pg-backup:latest",
 									Env: []corev1.EnvVar{
 										{
 											Name:  "DATABASE_URL",
@@ -176,9 +176,25 @@ func (r *S3BackupReconciler) CronJobForBackup(backup *infrav1.S3Backup) (*batchv
 												},
 											},
 										},
+										{
+											Name: "AWS_SECRET_ACCESS_KEY",
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: backup.Spec.AWSCredentialsSecretName,
+													},
+													Key: "AWS_SECRET_ACCESS_KEY",
+												},
+											},
+										},
 									},
 									Command: []string{"/bin/sh", "-c"},
-									Args:    []string{},
+									Args: []string{
+										`echo "Starting Database Backup..." && \
+										 aws sts get-caller-identity && \
+										 TIME=$(date +%Y%m%d-%H%M%S) && \
+										 pg_dump $DATABASE_URL | gzip | aws s3 cp - s3://$S3_BUCKET/postgres-backup-$TIME.sql.gz`,
+									},
 								},
 							},
 						},
