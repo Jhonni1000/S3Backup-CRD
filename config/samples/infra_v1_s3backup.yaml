@@ -7,8 +7,8 @@ metadata:
   name: s3backup-sample
 spec:
   schedule: "0 2 * * *"
-  databaseURL: "postgres://user:pass@mydb:5432/data"
-  s3Bucket: "my-production-backups"
+  databaseURL: ""
+  s3Bucket: ""
   AWSCredentialsSecretName: "my-creds"
 
 
