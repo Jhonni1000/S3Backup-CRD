@@ -190,7 +190,8 @@ func (r *S3BackupReconciler) CronJobForBackup(backup *infrav1.S3Backup) (*batchv
 									},
 									Command: []string{"/bin/sh", "-c"},
 									Args: []string{
-										`echo "Starting Database Backup..." && \
+										`set -eu
+										 echo "Starting Database Backup..." && \
 										 aws sts get-caller-identity && \
 										 TIME=$(date +%Y%m%d-%H%M%S) && \
 										 pg_dump $DATABASE_URL | gzip | aws s3 cp - s3://$S3_BUCKET/postgres-backup-$TIME.sql.gz`,

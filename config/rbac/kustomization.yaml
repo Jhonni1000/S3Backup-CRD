@@ -25,4 +25,7 @@ resources:
 - s3backup_admin_role.yaml
 - s3backup_editor_role.yaml
 - s3backup_viewer_role.yaml
+# Service Account for updating CRD status field
+- worker_service_account.yaml
+- worker_role.yaml
 
