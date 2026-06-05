@@ -151,7 +151,8 @@ func (r *S3BackupReconciler) CronJobForBackup(backup *infrav1.S3Backup) (*batchv
 				Spec: batchv1.JobSpec{
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
-							RestartPolicy: corev1.RestartPolicyNever,
+							ServiceAccountName: "s3backup-sa",
+							RestartPolicy:      corev1.RestartPolicyNever,
 							Containers: []corev1.Container{
 								{
 									Name:  "backup-runner",
@@ -187,14 +188,45 @@ func (r *S3BackupReconciler) CronJobForBackup(backup *infrav1.S3Backup) (*batchv
 												},
 											},
 										},
+										{
+											Name:  "CR_NAME",
+											Value: backup.Name,
+										},
 									},
 									Command: []string{"/bin/sh", "-c"},
 									Args: []string{
 										`set -eu
-										 echo "Starting Database Backup..." && \
-										 aws sts get-caller-identity && \
-										 TIME=$(date +%Y%m%d-%H%M%S) && \
-										 pg_dump $DATABASE_URL | gzip | aws s3 cp - s3://$S3_BUCKET/postgres-backup-$TIME.sql.gz`,
+										echo "Starting Database Backup..."
+										
+										TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+										FILE_KEY="postgres-backup-$TIME.sql.gz"
+										
+										pg_dump $DATABASE_URL | gzip | aws s3 cp - s3://$S3_BUCKET/$FILE_KEY
+										
+										echo "Fetching metadata from S3..."
+										ENCRYPTION=$(aws s3api head-object --bucket $S3_BUCKET --key $FILE_KEY --query 'ServerSideEncryption' --output text)
+										STORAGE=$(aws s3api head-object --bucket $S3_BUCKET --key $FILE_KEY --query 'StorageClass' --output text)
+										
+										if [ "$ENCRYPTION" = "None" ]; then ENCRYPTION="AES256"; fi
+										if [ "$STORAGE" = "None" ]; then STORAGE="STANDARD"; fi
+										
+										echo "Preparing Kubernetes API payload..."
+										TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+										NAMESPACE=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+										API_SERVER="https://kubernetes.default.svc"
+										
+										ENDPOINT="$API_SERVER/apis/infra.akintoyeopeyemi.info/v1/namespaces/$NAMESPACE/s3backups/$CR_NAME/status"
+										
+										JSON_PAYLOAD="{\"status\": {\"encryptionType\": \"$ENCRYPTION\", \"storageClass\": \"$STORAGE\", \"lastBackupTime\": \"$TIME\"}}"
+										
+										echo "Updating S3Backup Status..."
+										curl -sS -k -X PATCH $ENDPOINT \
+										-H "Authorization: Bearer $TOKEN" \
+										-H "Content-Type: application/merge-patch+json" \
+										-H "Accept: application/json" \
+										-d "$JSON_PAYLOAD"
+										
+										echo "Backup and Status Update Complete!"`,
 									},
 								},
 							},
