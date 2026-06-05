@@ -70,6 +70,12 @@ type S3BackupStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	Schedule string `json:"schedule,omitempty"`
+
+	EncryptionType string `json:"encryptionType,omitempty"`
+
+	StorageClass string `json:"storageClass,omitempty"`
+
+	LastBackupTime string `json:"lastBackupTime,omitempty"`
 }
 
 // +kubebuilder:object:root=true
