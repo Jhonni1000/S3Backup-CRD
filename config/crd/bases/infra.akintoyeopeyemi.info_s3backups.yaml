@@ -68,9 +68,9 @@ spec:
             - message: 'Validation Error: You must provide exactly one authentication
                 method (either AWSCredentialsSecretName or IRSAServiceAccountName,
                 but not both).'
-              rule: (has(self.AWSCredentialsSecretName) && self.AWSCredentialsSecretName
-                != ”) != (has(self.IRSAServiceAccountName) && self.IRSAServiceAccountName
-                != ”)
+              rule: (has(self.AWSCredentialsSecretName) && size(self.AWSCredentialsSecretName)
+                > 0) != (has(self.IRSAServiceAccountName) && size(self.IRSAServiceAccountName)
+                > 0)
           status:
             description: status defines the observed state of S3Backup
             properties:
