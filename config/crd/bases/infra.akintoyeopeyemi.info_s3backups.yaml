@@ -69,8 +69,8 @@ spec:
                 method (either AWSCredentialsSecretName or IRSAServiceAccountName,
                 but not both).'
               rule: (has(self.AWSCredentialsSecretName) && self.AWSCredentialsSecretName
-                != '') != (has(self.IRSAServiceAccountName) && self.IRSAServiceAccountName
-                != '')
+                != ”) != (has(self.IRSAServiceAccountName) && self.IRSAServiceAccountName
+                != ”)
           status:
             description: status defines the observed state of S3Backup
             properties:
