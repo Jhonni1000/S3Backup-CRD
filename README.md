@@ -133,3 +133,137 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
  -->
+
+
+## Pod Execution Logs & JSON Output
+
+When the CronJob triggers, the Pod securely backs up the database to AWS S3, fetches the encryption metadata, and sends a REST payload back to the Kubernetes API to update the Custom Resource.
+
+```bash
+$ kubectl logs job/s3backup-sample-1718506800
+Starting Database Backup...
+Fetching metadata from S3...
+Preparing Kubernetes API payload...
+Updating S3Backup Status...
+{
+  "apiVersion": "infra.akintoyeopeyemi.info/v1",
+  "kind": "S3Backup",
+  "metadata": {
+    "annotations": {
+      "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"infra.akintoyeopeyemi.info/v1\",\"kind\":\"S3Backup\",\"metadata\":{\"annotations\":{},\"labels\":{\"app.kubernetes.io/managed-by\":\"kustomize\",\"app.kubernetes.io/name\":\"backup-operator\"},\"name\":\"s3backup-sample\",\"namespace\":\"default\"},\"spec\":{\"AWSCredentialsSecretName\":\"my-creds\",\"databaseURL\":\"postgres://***:***@postgres-svc:5432/postgres\",\"s3Bucket\":\"s3-postgres-backups-***-eu-west-2-an\",\"schedule\":\"* * * * *\"}}\n"
+    },
+    "creationTimestamp": "2026-06-16T03:01:06Z",
+    "generation": 1,
+    "labels": {
+      "app.kubernetes.io/managed-by": "kustomize",
+      "app.kubernetes.io/name": "backup-operator"
+    },
+    "managedFields": [
+      {
+        "apiVersion": "infra.akintoyeopeyemi.info/v1",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:metadata": {
+            "f:annotations": {
+              ".": {},
+              "f:kubectl.kubernetes.io/last-applied-configuration": {}
+            },
+            "f:labels": {
+              ".": {},
+              "f:app.kubernetes.io/managed-by": {},
+              "f:app.kubernetes.io/name": {}
+            }
+          },
+          "f:spec": {
+            ".": {},
+            "f:AWSCredentialsSecretName": {},
+            "f:databaseURL": {},
+            "f:s3Bucket": {},
+            "f:schedule": {}
+          }
+        },
+        "manager": "kubectl-client-side-apply",
+        "operation": "Update",
+        "time": "2026-06-16T03:01:06Z"
+      },
+      {
+        "apiVersion": "infra.akintoyeopeyemi.info/v1",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:status": {
+            ".": {},
+            "f:schedule": {}
+          }
+        },
+        "manager": "main",
+        "operation": "Update",
+        "subresource": "status",
+        "time": "2026-06-16T03:01:06Z"
+      },
+      {
+        "apiVersion": "infra.akintoyeopeyemi.info/v1",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:status": {
+            "f:encryptionType": {},
+            "f:lastBackupTime": {},
+            "f:storageClass": {}
+          }
+        },
+        "manager": "curl",
+        "operation": "Update",
+        "subresource": "status",
+        "time": "2026-06-16T03:03:59Z"
+      }
+    ],
+    "name": "s3backup-sample",
+    "namespace": "default",
+    "resourceVersion": "1469",
+    "uid": "***"
+  },
+  "spec": {
+    "AWSCredentialsSecretName": "my-creds",
+    "databaseURL": "postgres://***:***@postgres-svc:5432/postgres",
+    "s3Bucket": "s3-postgres-backups-***-eu-west-2-an",
+    "schedule": "* * * * *"
+  },
+  "status": {
+    "encryptionType": "AES256",
+    "lastBackupTime": "2026-06-16T03:03:28Z",
+    "schedule": "* * * * *",
+    "storageClass": "STANDARD"
+  }
+}
+Backup and Status Update Complete!
+```
+
+## Custom Resource Verification (kubectl describe)
+
+Once the Pod terminates, you can verify that the Kubernetes API successfully received the payload and updated the `Status` fields without the Operator's Go code needing to interact with AWS.
+
+```bash
+$ kubectl describe s3backups s3backup-sample
+Name:         s3backup-sample
+Namespace:    default
+Labels:       app.kubernetes.io/managed-by=kustomize
+              app.kubernetes.io/name=backup-operator
+Annotations:  <none>
+API Version:  infra.akintoyeopeyemi.info/v1
+Kind:         S3Backup
+Metadata:
+  Creation Timestamp:  2026-06-16T03:01:06Z
+  Generation:          1
+  Resource Version:    1556
+  UID:                 ***
+Spec:
+  AWSCredentials Secret Name:  my-creds
+  Database URL:                postgres://***:***@postgres-svc:5432/postgres
+  s3Bucket:                    s3-postgres-backups-***-eu-west-2-an
+  Schedule:                    * * * * *
+Status:
+  Encryption Type:   AES256
+  Last Backup Time:  2026-06-16T03:05:07Z
+  Schedule:          * * * * *
+  Storage Class:     STANDARD
+Events:              <none>
+```

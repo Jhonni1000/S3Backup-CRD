@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: s3backup-sample
 spec:
-  schedule: "0 2 * * *"
+  schedule: "1,31 * * * *"
   databaseURL: ""
   s3Bucket: ""
   AWSCredentialsSecretName: "my-creds"
