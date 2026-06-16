@@ -42,6 +42,9 @@ spec:
               AWSCredentialsSecretName:
                 description: Kubernetes Secret with the required AWS credentials
                 type: string
+              IRSAServiceAccountName:
+                description: EKS IRSA name for AWS Credentials
+                type: string
               databaseURL:
                 description: DatabaseURL is the connection string to the database
                 type: string
@@ -57,11 +60,17 @@ spec:
                   run
                 type: string
             required:
-            - AWSCredentialsSecretName
             - databaseURL
             - s3Bucket
             - schedule
             type: object
+            x-kubernetes-validations:
+            - message: 'Validation Error: You must provide exactly one authentication
+                method (either AWSCredentialsSecretName or IRSAServiceAccountName,
+                but not both).'
+              rule: (has(self.AWSCredentialsSecretName) && self.AWSCredentialsSecretName
+                != '') != (has(self.IRSAServiceAccountName) && self.IRSAServiceAccountName
+                != '')
           status:
             description: status defines the observed state of S3Backup
             properties:

@@ -24,6 +24,7 @@ import (
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // S3BackupSpec defines the desired state of S3Backup
+// +kubebuilder:validation:XValidation:rule="(has(self.AWSCredentialsSecretName) && self.AWSCredentialsSecretName != '') != (has(self.IRSAServiceAccountName) && self.IRSAServiceAccountName != '')",message="Validation Error: You must provide exactly one authentication method (either AWSCredentialsSecretName or IRSAServiceAccountName, but not both)."
 type S3BackupSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -44,7 +45,10 @@ type S3BackupSpec struct {
 	S3Bucket string `json:"s3Bucket"`
 
 	// Kubernetes Secret with the required AWS credentials
-	AWSCredentialsSecretName string `json:"AWSCredentialsSecretName"`
+	AWSCredentialsSecretName string `json:"AWSCredentialsSecretName,omitempty"`
+
+	// EKS IRSA name for AWS Credentials
+	IRSAServiceAccountName string `json:"IRSAServiceAccountName,omitempty"`
 }
 
 // S3BackupStatus defines the observed state of S3Backup.
