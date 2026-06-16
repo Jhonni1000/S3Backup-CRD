@@ -22,9 +22,11 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -73,6 +75,49 @@ func (r *S3BackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	logger.Info("Successfully fetched S3Backup request!",
 		"Name", backup.Name,
 		"RequestedSchedule", backup.Spec.Schedule)
+
+	if backup.Spec.IRSAServiceAccountName != "" {
+		roleBindingName := backup.Name + "-status-binding"
+		foundBinding := &rbacv1.RoleBinding{}
+
+		err := r.Get(ctx, types.NamespacedName{Name: roleBindingName, Namespace: backup.Namespace}, foundBinding)
+
+		if apierrors.IsNotFound(err) {
+			statusRoleBinding := &rbacv1.RoleBinding{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      roleBindingName,
+					Namespace: backup.Namespace,
+				},
+				Subjects: []rbacv1.Subject{
+					{
+						Kind:      "ServiceAccount",
+						Name:      backup.Spec.IRSAServiceAccountName,
+						Namespace: backup.Namespace,
+					},
+				},
+				RoleRef: rbacv1.RoleRef{
+					APIGroup: "rbac.authorization.k8s.io",
+					Name:     "s3backup-worker-role",
+					Kind:     "Role",
+				},
+			}
+
+			// Set the owner reference so it gets deleted when the backup gets deleted
+			err := ctrl.SetControllerReference(&backup, statusRoleBinding, r.Scheme)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+
+			logger.Info("Creating RoleBinding for IRSA", "RoleBinding.Name", roleBindingName)
+			if err := r.Create(ctx, statusRoleBinding); err != nil {
+				logger.Error(err, "Failed to create RoleBinding for IRSA")
+				return ctrl.Result{}, err
+			}
+		} else if err != nil {
+			logger.Error(err, "Failed to get RoleBinding")
+			return ctrl.Result{}, err
+		}
+	}
 
 	desiredCronJob, err := r.CronJobForBackup(&backup)
 	if err != nil {
@@ -134,11 +179,55 @@ func (r *S3BackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&infrav1.S3Backup{}).
 		Owns(&batchv1.CronJob{}).
+		Owns(&rbacv1.RoleBinding{}).
 		Named("s3backup").
 		Complete(r)
 }
 
 func (r *S3BackupReconciler) CronJobForBackup(backup *infrav1.S3Backup) (*batchv1.CronJob, error) {
+	saName := "s3backup-sa"
+	if backup.Spec.IRSAServiceAccountName != "" {
+		saName = backup.Spec.IRSAServiceAccountName
+	}
+
+	envVars := []corev1.EnvVar{
+		{Name: "DATABASE_URL",
+			Value: backup.Spec.DatabaseURL,
+		},
+		{Name: "S3_BUCKET",
+			Value: backup.Spec.S3Bucket,
+		},
+		{Name: "CR_NAME",
+			Value: backup.Name,
+		},
+	}
+
+	if backup.Spec.AWSCredentialsSecretName != "" {
+		envVars = append(envVars, corev1.EnvVar{
+			Name: "AWS_ACCESS_KEY_ID",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: backup.Spec.AWSCredentialsSecretName,
+					},
+					Key: "AWS_ACCESS_KEY_ID",
+				},
+			},
+		},
+
+			corev1.EnvVar{
+				Name: "AWS_SECRET_ACCESS_KEY",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: backup.Spec.AWSCredentialsSecretName,
+						},
+						Key: "AWS_SECRET_ACCESS_KEY",
+					},
+				},
+			},
+		)
+	}
 
 	cronjob := &batchv1.CronJob{
 		ObjectMeta: metav1.ObjectMeta{
@@ -151,48 +240,13 @@ func (r *S3BackupReconciler) CronJobForBackup(backup *infrav1.S3Backup) (*batchv
 				Spec: batchv1.JobSpec{
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
-							ServiceAccountName: "s3backup-sa",
+							ServiceAccountName: saName,
 							RestartPolicy:      corev1.RestartPolicyNever,
 							Containers: []corev1.Container{
 								{
-									Name:  "backup-runner",
-									Image: "jhonni1000/s3-pg-backup:latest",
-									Env: []corev1.EnvVar{
-										{
-											Name:  "DATABASE_URL",
-											Value: backup.Spec.DatabaseURL,
-										},
-										{
-											Name:  "S3_BUCKET",
-											Value: backup.Spec.S3Bucket,
-										},
-										{
-											Name: "AWS_ACCESS_KEY_ID",
-											ValueFrom: &corev1.EnvVarSource{
-												SecretKeyRef: &corev1.SecretKeySelector{
-													LocalObjectReference: corev1.LocalObjectReference{
-														Name: backup.Spec.AWSCredentialsSecretName,
-													},
-													Key: "AWS_ACCESS_KEY_ID",
-												},
-											},
-										},
-										{
-											Name: "AWS_SECRET_ACCESS_KEY",
-											ValueFrom: &corev1.EnvVarSource{
-												SecretKeyRef: &corev1.SecretKeySelector{
-													LocalObjectReference: corev1.LocalObjectReference{
-														Name: backup.Spec.AWSCredentialsSecretName,
-													},
-													Key: "AWS_SECRET_ACCESS_KEY",
-												},
-											},
-										},
-										{
-											Name:  "CR_NAME",
-											Value: backup.Name,
-										},
-									},
+									Name:    "backup-runner",
+									Image:   "jhonni1000/s3-pg-backup:latest",
+									Env:     envVars,
 									Command: []string{"/bin/sh", "-c"},
 									Args: []string{
 										`set -eu

@@ -6,17 +6,3 @@ rules:
   - apiGroups: ["infra.akintoyeopeyemi.info"]
     resources: ["s3backups/status"]
     verbs: ["get", "patch", "update"]
-
----
-
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: s3backup-worker-binding
-subjects:
-  - kind: ServiceAccount
-    name:  s3backup-sa
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name:  s3backup-worker-role
